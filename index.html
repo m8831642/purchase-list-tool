@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>物資採購登記與統計</title>
+  <style>
+    :root { --ink:#1f2937; --muted:#64748b; --brand:#176b5b; --line:#dbe3ea; --bg:#f3f6f8; --soft:#edf8f5; }
+    * { box-sizing:border-box; }
+    body { margin:0; padding:24px 14px 48px; background:var(--bg); color:var(--ink); font-family:Arial,"Microsoft JhengHei",sans-serif; }
+    .wrap { max-width:980px; margin:auto; }
+    header { margin:0 0 20px; }
+    h1 { margin:0 0 8px; font-size:clamp(26px,4vw,36px); color:var(--brand); }
+    h2 { margin:0 0 16px; font-size:22px; }
+    p { line-height:1.65; }
+    .muted { color:var(--muted); }
+    .card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:22px; margin:16px 0; box-shadow:0 4px 18px #1020300a; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+    label { display:block; font-weight:700; margin:0 0 7px; }
+    input, select { width:100%; min-height:44px; border:1px solid #b9c6d2; border-radius:9px; padding:10px 12px; font:inherit; background:#fff; }
+    button { border:0; border-radius:9px; padding:12px 16px; font:inherit; font-weight:700; cursor:pointer; background:var(--brand); color:white; }
+    button.secondary { color:var(--ink); background:#e8eef2; }
+    button:disabled { opacity:.55; cursor:wait; }
+    .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
+    .actions button { flex:0 0 auto; }
+    .status { margin:12px 0 0; padding:10px 12px; border-radius:8px; background:#f1f5f9; white-space:pre-wrap; }
+    .status:empty { display:none; }
+    .status.ok { color:#166534; background:#f0fdf4; }
+    .status.error { color:#991b1b; background:#fef2f2; }
+    .notice { border-left:4px solid #eab308; padding:10px 12px; background:#fffbeb; color:#854d0e; border-radius:6px; }
+    .hidden { display:none !important; }
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; margin-top:10px; font-size:14px; }
+    th, td { text-align:left; padding:10px 9px; border-bottom:1px solid var(--line); vertical-align:top; }
+    th { background:#f1f5f9; white-space:nowrap; }
+    .num { text-align:right; font-variant-numeric:tabular-nums; }
+    .summary-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
+    .metric { border-radius:12px; padding:14px; background:var(--soft); }
+    .metric span { display:block; color:var(--muted); font-size:13px; margin-bottom:5px; }
+    .metric strong { font-size:23px; }
+    .section-title { margin:24px 0 8px; }
+    footer { color:var(--muted); font-size:12px; text-align:center; margin-top:24px; }
+    @media (max-width:620px) { .grid,.summary-grid { grid-template-columns:1fr; } .card { padding:17px; } }
+    @media print {
+      body { background:#fff; padding:0; color:#000; }
+      .wrap { max-width:none; }
+      header, #publicSection, #loginCard, .no-print, footer { display:none !important; }
+      .card { box-shadow:none; border:0; padding:0; margin:0; }
+      #adminPanel { display:block !important; }
+      #adminPanel h2 { font-size:20px; }
+      table { font-size:10pt; }
+      th,td { padding:6px; }
+      tr { break-inside:avoid; }
+      .summary-grid { grid-template-columns:repeat(3,1fr); }
+      .metric { border:1px solid #bbb; background:#fff; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <h1>📦 物資採購登記</h1>
+      <p class="muted">填寫姓名、物資名稱和數量。管理者登入後，可查看明細、品項總量並列印採購清單。</p>
+    </header>
+
+    <section class="card" id="configWarning">
+      <strong>尚未完成資料庫設定</strong>
+      <p>請在本檔案的 JavaScript 設定區，填入 Supabase Project URL 與 Publishable key，再依教學完成資料表與權限設定。</p>
+    </section>
+
+    <section class="card" id="publicSection">
+      <h2>填寫物資需求</h2>
+      <p class="muted">請使用一致的物資名稱，避免同一品項因寫法不同而分開統計。</p>
+      <form id="requestForm">
+        <div class="grid">
+          <div>
+            <label for="buyerName">姓名／單位 *</label>
+            <input id="buyerName" name="buyerName" maxlength="80" autocomplete="name" required placeholder="例如：王小明／總務組">
+          </div>
+          <div>
+            <label for="itemName">想採購的物資 *</label>
+            <input id="itemName" name="itemName" maxlength="120" required placeholder="例如：A4影印紙">
+          </div>
+          <div>
+            <label for="quantity">需求數量（1～10） *</label>
+            <select id="quantity" name="quantity" required>
+              <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option>
+            </select>
+          </div>
+        </div>
+        <div class="actions"><button id="submitButton" type="submit">送出採購需求</button></div>
+        <p id="requestStatus" class="status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="card" id="loginCard">
+      <h2>管理者登入</h2>
+      <p class="muted">只有已在 Supabase 後台建立的管理者帳號，且符合資料庫管理者信箱權限，才能讀取採購紀錄。</p>
+      <form id="loginForm">
+        <div class="grid">
+          <div>
+            <label for="adminEmail">管理者電子郵件</label>
+            <input id="adminEmail" type="email" autocomplete="username" required placeholder="管理者帳號電子郵件">
+          </div>
+          <div>
+            <label for="adminPassword">管理者密碼</label>
+            <input id="adminPassword" type="password" autocomplete="current-password" required placeholder="管理者密碼">
+          </div>
+        </div>
+        <div class="actions"><button id="loginButton" type="submit">登入查看統計</button></div>
+        <p id="loginStatus" class="status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="card hidden" id="adminPanel">
+      <div class="actions no-print" style="margin-top:0;justify-content:space-between;align-items:center">
+        <h2 style="margin:0">管理者採購統計</h2>
+        <div class="actions" style="margin-top:0">
+          <button type="button" id="refreshButton" class="secondary">重新整理</button>
+          <button type="button" id="printButton">列印清單</button>
+          <button type="button" id="logoutButton" class="secondary">登出</button>
+        </div>
+      </div>
+      <h2 class="print-only-title" style="display:none">物資採購統計清單</h2>
+      <p id="adminStatus" class="status no-print" role="status" aria-live="polite"></p>
+      <div class="summary-grid">
+        <div class="metric"><span>需求登記筆數</span><strong id="requestCount">0</strong></div>
+        <div class="metric"><span>物資品項數</span><strong id="itemCount">0</strong></div>
+        <div class="metric"><span>物資總數量</span><strong id="totalQuantity">0</strong></div>
+      </div>
+
+      <h3 class="section-title">一、採購彙總（依物資名稱統計）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>物資名稱</th><th class="num">總需求數量</th><th>需求人員／單位</th></tr></thead>
+        <tbody id="summaryBody"><tr><td colspan="3">尚無資料</td></tr></tbody>
+      </table></div>
+
+      <h3 class="section-title">二、個別需求明細</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>登記時間</th><th>姓名／單位</th><th>物資名稱</th><th class="num">數量</th></tr></thead>
+        <tbody id="detailBody"><tr><td colspan="4">尚無資料</td></tr></tbody>
+      </table></div>
+      <p class="muted">列印時會只列印本管理者統計區域。建議列印前先按「重新整理」。</p>
+    </section>
+    <footer>物資採購登記工具｜請勿輸入身分證字號、密碼或其他不必要的敏感個資。</footer>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    // ===== 設定區：請替換成自己 Supabase 專案的資料 =====
+    // Supabase Dashboard > Project Settings / API Keys 可找到 Project URL 與 Publishable key。
+    // 只使用 publishable key；絕不可放入 service_role 或 secret key。
+    const SUPABASE_URL = "https://ebwswitckgnfwzzpotek.supabase.co";
+    const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_6oMSnwo1AYOxUG98vsW7Pg_GQZ5kozb";
+    // ===== 設定區結束 =====
+
+    const configWarning = document.getElementById("configWarning");
+    const requestStatus = document.getElementById("requestStatus");
+    const loginStatus = document.getElementById("loginStatus");
+    const adminStatus = document.getElementById("adminStatus");
+    const adminPanel = document.getElementById("adminPanel");
+    const loginCard = document.getElementById("loginCard");
+    let db = null;
+
+    const configured =
+      SUPABASE_URL.startsWith("https://") &&
+      !SUPABASE_URL.includes("請替換") &&
+      SUPABASE_PUBLISHABLE_KEY.length > 20 &&
+      !SUPABASE_PUBLISHABLE_KEY.includes("請替換");
+
+    if (configured && window.supabase) {
+      db = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+      configWarning.classList.add("hidden");
+    } else {
+      configWarning.classList.remove("hidden");
+    }
+
+    function setStatus(element, message, type = "") {
+      element.textContent = message;
+      element.className = "status" + (type ? " " + type : "");
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      })[char]);
+    }
+
+    document.getElementById("requestForm").addEventListener("submit", async event => {
+      event.preventDefault();
+      if (!db) {
+        setStatus(requestStatus, "請先完成 Supabase URL 與 Publishable key 設定。", "error");
+        return;
+      }
+      const buyer_name = document.getElementById("buyerName").value.trim();
+      const item_name = document.getElementById("itemName").value.trim().replace(/\s+/g, " ");
+      const quantity = Number(document.getElementById("quantity").value);
+      if (!buyer_name || !item_name || !Number.isInteger(quantity) || quantity < 1 || quantity > 10) {
+        setStatus(requestStatus, "請填寫姓名、物資名稱，並選擇 1～10 的數量。", "error");
+        return;
+      }
+
+      const button = document.getElementById("submitButton");
+      button.disabled = true;
+      setStatus(requestStatus, "正在送出……");
+      const { error } = await db.from("purchase_requests").insert({ buyer_name, item_name, quantity });
+      button.disabled = false;
+      if (error) {
+        console.error(error);
+        setStatus(requestStatus, "送出失敗。請確認資料庫 SQL、RLS 權限與 Supabase 設定已完成。", "error");
+        return;
+      }
+      document.getElementById("requestForm").reset();
+      setStatus(requestStatus, "✅ 已收到你的物資需求。若還有其他物資，請再填寫一次。", "ok");
+    });
+
+    async function loadRecords() {
+      if (!db) return;
+      setStatus(adminStatus, "正在載入資料……");
+      const { data, error } = await db
+        .from("purchase_requests")
+        .select("id,buyer_name,item_name,quantity,created_at")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error(error);
+        setStatus(adminStatus, "無法讀取資料。請確認你使用的是 SQL 中設定的管理者信箱。", "error");
+        return;
+      }
+
+      const records = data || [];
+      const groups = new Map();
+      let grandTotal = 0;
+      for (const row of records) {
+        const label = String(row.item_name || "").trim().replace(/\s+/g, " ");
+        const key = label.toLocaleLowerCase("zh-TW");
+        if (!groups.has(key)) groups.set(key, { item: label, quantity: 0, requesters: [] });
+        const group = groups.get(key);
+        group.quantity += Number(row.quantity) || 0;
+        const requesterName = String(row.buyer_name || "");
+        if (!group.requesters.includes(requesterName)) group.requesters.push(requesterName);
+        grandTotal += Number(row.quantity) || 0;
+      }
+
+      const summary = Array.from(groups.values()).sort((a, b) => b.quantity - a.quantity || a.item.localeCompare(b.item, "zh-TW"));
+      document.getElementById("requestCount").textContent = records.length;
+      document.getElementById("itemCount").textContent = summary.length;
+      document.getElementById("totalQuantity").textContent = grandTotal;
+
+      const summaryBody = document.getElementById("summaryBody");
+      summaryBody.innerHTML = summary.length ? summary.map(group => `
+        <tr><td>${escapeHtml(group.item)}</td><td class="num">${group.quantity}</td><td>${group.requesters.map(escapeHtml).join("、")}</td></tr>
+      `).join("") : '<tr><td colspan="3">目前尚無採購登記</td></tr>';
+
+      const detailBody = document.getElementById("detailBody");
+      detailBody.innerHTML = records.length ? records.map(row => `
+        <tr><td>${escapeHtml(new Date(row.created_at).toLocaleString("zh-TW"))}</td><td>${escapeHtml(row.buyer_name)}</td><td>${escapeHtml(row.item_name)}</td><td class="num">${Number(row.quantity)}</td></tr>
+      `).join("") : '<tr><td colspan="4">目前尚無採購登記</td></tr>';
+
+      setStatus(adminStatus, `已載入 ${records.length} 筆登記資料。`, "ok");
+    }
+
+    async function showAdminIfSessionExists() {
+      if (!db) return;
+      const { data: { session } } = await db.auth.getSession();
+      if (session) {
+        adminPanel.classList.remove("hidden");
+        loginCard.classList.add("hidden");
+        await loadRecords();
+      }
+    }
+
+    document.getElementById("loginForm").addEventListener("submit", async event => {
+      event.preventDefault();
+      if (!db) {
+        setStatus(loginStatus, "請先完成 Supabase URL 與 Publishable key 設定。", "error");
+        return;
+      }
+      const email = document.getElementById("adminEmail").value.trim();
+      const password = document.getElementById("adminPassword").value;
+      const button = document.getElementById("loginButton");
+      button.disabled = true;
+      setStatus(loginStatus, "正在登入……");
+      const { error } = await db.auth.signInWithPassword({ email, password });
+      button.disabled = false;
+      if (error) {
+        setStatus(loginStatus, "登入失敗，請確認電子郵件、密碼及 Supabase Auth 設定。", "error");
+        return;
+      }
+      loginCard.classList.add("hidden");
+      adminPanel.classList.remove("hidden");
+      document.getElementById("adminPassword").value = "";
+      await loadRecords();
+    });
+
+    document.getElementById("refreshButton").addEventListener("click", loadRecords);
+    document.getElementById("printButton").addEventListener("click", () => {
+      const title = document.querySelector(".print-only-title");
+      title.style.display = "block";
+      window.print();
+      title.style.display = "none";
+    });
+    document.getElementById("logoutButton").addEventListener("click", async () => {
+      if (db) await db.auth.signOut();
+      adminPanel.classList.add("hidden");
+      loginCard.classList.remove("hidden");
+      setStatus(loginStatus, "已登出。", "ok");
+    });
+
+    showAdminIfSessionExists();
+  </script>
+</body>
+</html>
